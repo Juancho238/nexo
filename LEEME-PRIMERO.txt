@@ -1,14 +1,9 @@
-NEXO MVP — Vite + React + Supabase
+NEXO v2
 
-1. Abrir README.md para los pasos completos.
-2. npm ci
-3. Copiar .env.example a .env y completar la URL y clave publicable.
-4. Ejecutar supabase/migrations/001_nexo.sql en un Supabase nuevo.
-5. Crear el primer usuario Auth y su perfil super_admin según README.md.
-6. npm run dev
+Si tu base ya tiene el MVP, ejecutar solo las migraciones 002, 003 y 004 en ese orden. No volver a ejecutar 001.
+Conservar tu .env y las variables de Vercel. No incluye claves privadas.
+Desplegar invite-candidate y configurar SMTP y URLs de Auth para activar las invitaciones.
+Leer README.md: funciones implementadas, configuración y límites.
 
-La vista privada entregada permite revisar la demostración como dueño. Para invitar empresas externas, alojar la aplicación en un dominio accesible para ellas y mantener el login y RLS de Supabase; la URL privada de revisión no habilita acceso externo.
-
-Los emails de negocio se guardan en una cola; requieren conectar un proveedor. Las invitaciones y recuperación requieren SMTP y desplegar invite-user.
-
-Pruebas de base de datos y flujo de interfaz aprobadas. La conexión real, SMTP, Realtime y las invitaciones remotas quedan pendientes de tu configuración. No se realizó una comprobación visual en navegador ni de WebMCP en un navegador compatible.
+Firma electrónica, IA, ARCA y WhatsApp Business API siguen pendientes de proveedor/configuración.
+WhatsApp manual y lectura de texto PDF sí están incluidos.

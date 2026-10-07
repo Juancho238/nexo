@@ -1,10 +1,10 @@
-# NEXO — Portal de Selección · MVP 0.1
+# NEXO — Portal de Selección · v2.0
 
 Aplicación de gestión B2B hecha con **Vite + React + TypeScript**, Supabase Auth, PostgreSQL, RLS y una Edge Function de invitación. Diseño oscuro, responsive y violeta. La vista entregada empieza en login; el botón **Explorar demostración** permite recorrer datos ficticios sin Supabase.
 
 ## Inicio local
 
-Requisitos: Node.js 22 LTS o posterior, npm y un proyecto Supabase vacío.
+Requisitos: Node.js 22 LTS o posterior, npm y un proyecto Supabase. Para una instalación nueva usar una base vacía; para actualizar usar la sección v2.
 
 ```bash
 npm ci
@@ -92,13 +92,50 @@ La asignación de unidades se administra desde **Usuarios → Permisos**. El alt
 - Emails de negocio: las solicitudes y los estados relevantes generan registros en `email_outbox`, con identidad visual preparada en `supabase/email-templates.ts`. **No se envían hasta conectar un proveedor y un worker de entrega.** No se informa un email como enviado mientras siga en cola. Los avisos de feedback por vencimiento requieren una futura tarea programada.
 - Las plantillas incluyen un enlace a la solicitud; `?request=UUID` abre su detalle después de iniciar sesión si el usuario tiene permiso.
 
-## Qué está preparado para la próxima etapa
+## Actualizar desde el MVP a v2
 
-- Integración autorizada de identificación: contrato en `src/integrations/identity.ts`. No hay conexión a ARCA, ni API inventada ni resultados simulados. La edad se calcula con la fecha de nacimiento registrada.
-- Carga privada de CV, agenda, WhatsApp, firma, IA, portal de candidatos y lectura de CV: no implementados en este MVP.
-- Reportes avanzados por gerente, puesto, razón social y unidad; períodos rápidos; edición de fichas y clientes; feedback gerencial y permisos de escritura por etapa: pendientes.
-- Para volúmenes grandes, sustituir la carga inicial del MVP por consultas paginadas por pantalla, búsqueda indexada en servidor y agregaciones SQL. Actualmente el repositorio pagina las respuestas de Supabase en lotes de 500 para evitar truncamiento, pero reúne los resultados visibles en memoria. El diseño relacional y los índices permiten ampliar esto sin cambiar las relaciones.
-- Evaluar auditoría de lectura y una política de retención de información antes de incorporar datos reales a gran escala.
+Conservá tu `.env` local y las variables de entorno de Vercel. El ZIP no incluye credenciales, dependencias instaladas ni compilados. La conexión se mantiene mediante las mismas variables `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`.
+
+1. En una base donde ya ejecutaste 001, aplicar en orden **002_nexo_v2.sql → 003_private_cv.sql → 004_candidate_portal.sql**. No repetir 001. Las migraciones son adicionales: no borran ni reemplazan los registros existentes. Crear una copia de seguridad antes de actualizar una base en uso. Ejecutar cada migración una sola vez; no son scripts para repetir sin control de versiones.
+2. Para una instalación nueva, ejecutar 001 primero y luego 002, 003 y 004. Los pasos de Auth y primer administrador anteriores siguen vigentes.
+3. Desplegar la función de candidatos además de la función de usuarios existente:
+
+```bash
+supabase functions deploy invite-candidate
+supabase secrets set NEXO_APP_URL=https://TU-DOMINIO.vercel.app
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_ANON_KEY` son secretos del entorno de Edge Functions, jamás variables Vite. La función autentica el token y vuelve a verificar el perfil activo super_admin. El gateway usa `verify_jwt=true`; para claves publicables nuevas verificar la compatibilidad JWT de tu proyecto antes de producción, sin quitar la comprobación explícita de `auth.getUser()`.
+4. En Auth agregar los Redirect URLs exactos `https://TU-DOMINIO.vercel.app/?portal=1&setup=1` y `https://TU-DOMINIO.vercel.app/?setup=1`, y sus equivalentes locales si se usan. Configurar SMTP. **Invitar al portal** envía un email real al pulsarlo; no ocurre automáticamente al crear una ficha.
+5. Ejecutar `npm ci`, `npm test` y `npm run build`; subir el código a tu repositorio y generar un nuevo despliegue en Vercel. La carpeta de salida continúa siendo `dist`.
+
+## Funciones de v2
+
+| Función | Estado y uso |
+|---|---|
+| CV privados | Bucket `nexo-cv`, PDF hasta 5 MB. Cargar, descargar y eliminar desde la ficha. Selectora escribe; usuarios con proceso autorizado consultan. No hay URLs públicas. |
+| Lectura de CV | Extrae texto PDF localmente al pulsar **Leer texto del CV**. Carga diferida de PDF.js, límite 40 páginas / 60.000 caracteres. No tiene OCR ni interpreta imágenes. No completa ni cambia una ficha sin intervención humana. |
+| Agenda | Crear citas en la ficha, consultar en Agenda y marcar Programada / Realizada / Cancelada. Solo la selectora escribe. Marcar una cita realizada no crea un resultado de entrevista: éste se registra por separado. |
+| WhatsApp | Enlace manual desde la ficha con borrador. Requiere teléfono internacional, por ejemplo 549…; el usuario confirma el envío en WhatsApp. No hay API ni envíos automáticos. |
+| Portal de candidatos | Acceso por invitación en `/?portal=1`. Cada cuenta ve sus procesos con estados resumidos y CV propios; puede actualizar teléfono/localidad con confirmación registrada. No ve notas internas, DNI, historia de etapas, feedback ni fichas ajenas. No hay registro público ni carga de CV por candidato. |
+| Edición | Editar ficha y cliente desde su detalle. RPCs administrativas conservan relaciones e identificadores. |
+| Feedback gerencial | Gerente, admin cliente y selectora pueden recomendar Aprobar / Rechazar / Solicitar entrevista solamente en Presentado a gerencia o Entrevista gerencial, dentro de los procesos autorizados. Se registra actor/fecha y se notifica a la selectora. No cambia etapas automáticamente. Líder consulta. |
+| Reportes | Filtros cliente, razón social, unidad, gerente solicitante, puesto, estado y período; 7/30 días y CSV. El período corresponde a apertura de búsquedas y muestra sus resultados actuales, no movimientos ocurridos dentro del período. Cobertura media excluye cancelaciones. Gerente solicitante es quien creó el requerimiento, no un responsable asignado diferente. |
+| Consulta por pantalla | RPC `nexo_workspace`: páginas de 25 filas, detalle de búsqueda de 100 postulaciones por página; búsqueda global de servidor y conteos SQL completos. No carga todas las tablas al iniciar. |
+| Auditoría de lectura | Registra consultas de pantallas/fichas/reportes y descarga o lectura de CV desde el portal B2B. No representa todas las lecturas SQL/API ni las descargas desde el portal de candidatos. Los candidatos registran su confirmación de actualización en candidate_consents. |
+| Retención | Configuración de plazos en Configuración. No realiza borrados automáticos: quedan pendientes aprobación de la política, excepciones, procedimiento de purga y recuperación. |
+
+Los archivos reales y las funciones de invitación requieren Supabase. La demostración usa datos explícitamente ficticios, guarda agenda/feedback en la pestaña y no almacena ni invita candidatos reales.
+
+### Límites y conexiones pendientes
+
+- Identificación: se conserva el contrato de `src/integrations/identity.ts`. No hay conexión a ARCA, API inventada ni resultados simulados. La edad se calcula con la fecha de nacimiento registrada.
+- **Firma electrónica, IA y WhatsApp Business API** necesitan selección de proveedor, credenciales y definición de documentos/consentimientos. No están activados ni implementados como integraciones reales en esta entrega. El enlace manual de WhatsApp y la extracción de texto PDF funcionan sin estos proveedores.
+- Los selectores de configuración tienen un límite explícito de 200 registros visibles por tabla. Si se supera, la RPC informa el problema en vez de truncar silenciosamente. Para miles de clientes/unidades/usuarios hacen falta selectores remotos paginados; esta v2 resuelve paginación de listas operativas y agregaciones, no todas las necesidades de escala.
+- Las listas operativas incluyen relaciones acotadas: hasta 100 postulaciones y 500 registros de entrevistas/historial para las previsualizaciones. El detalle de candidato consulta su historial autorizado bajo demanda. Los conteos de Dashboard y Reportes se calculan por SQL; el número de entrevistas mostrado en cada búsqueda también es SQL. No exporta millones de filas ni garantiza latencia sin medir la base real.
+- El buscador de candidatos/puestos usa índices trigram de PostgreSQL. Los filtros genéricos de otras tablas consultan texto JSON y pueden requerir índices específicos según el volumen.
+- La revocación de una cuenta de candidato se hace mediante `candidate_accounts.active=false` por un administrador de base. No concede un rol empresarial al candidato.
+- Antes de uso masivo siguen pendientes revisión de privacidad, consentimiento para selección/almacenamiento, proceso de bajas y conservación. La confirmación del portal documenta una actualización de contacto; no reemplaza una política de privacidad completa.
 
 ## Comprobaciones
 
@@ -107,7 +144,7 @@ npm test
 npm run build
 ```
 
-`tests/database.mjs` ejecuta la migración en PostgreSQL embebido (PGlite) con un esquema Auth de prueba. Verifica aislamiento por cliente/unidad, bloqueo de elevación de rol, aprobación atómica, protección del historial, duplicados, capacidad de vacantes, usuarios inactivos y anonimato. **No sustituye la validación en tu proyecto Supabase real.**
+`tests/database.mjs` ejecuta las cuatro migraciones (con esquemas Auth/Storage de prueba) en PostgreSQL embebido (PGlite) con un esquema Auth de prueba. Verifica aislamiento por cliente/unidad, bloqueo de elevación de rol, aprobación atómica, protección del historial, duplicados, capacidad de vacantes, usuarios inactivos y anonimato. **No sustituye la validación en tu proyecto Supabase real.**
 
 `tests/ui.tsx` recorre el flujo de requerimiento → aprobación → búsqueda → candidato → historial, detecta DNI duplicado y verifica la vista del gerente en un DOM de prueba. No es una prueba visual de navegador. Las invitaciones externas, SMTP, Realtime y tu conexión remota solo pueden verificarse después de configurar Supabase.
 
@@ -124,3 +161,5 @@ npm run build
 - `supabase/email-templates.ts`: emails preparados para un futuro worker.
 
 Documentación oficial de referencia: [Auth](https://supabase.com/docs/guides/auth), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security), [signInWithPassword](https://supabase.com/docs/reference/javascript/auth-signinwithpassword).
+
+Referencia de lectura PDF: [PDF.js](https://mozilla.github.io/pdf.js/). Para activar el portal: [Supabase inviteUserByEmail](https://supabase.com/docs/reference/javascript/auth-admin-inviteuserbyemail).
